@@ -1,14 +1,15 @@
 import requests
 import os
 from bs4 import BeautifulSoup
+import itchat
+import time
 
 BASE_PTT_URL = 'https://www.ptt.cc'
 
-def download_image(image_url, dir_name):
-    response = requests.get(image_url)
-    with open(dir_name + '/' + image_url.split('/')[-1], 'wb') as f:
-        f.write(response.content)
-    f.close()
+class ArticleInfo:
+    def __init__(self, url, likes):
+        self.url = url
+        self.likes = likes
 
 def getHtmlPage(url):
     response = requests.get(
@@ -18,39 +19,56 @@ def getHtmlPage(url):
         raise Exception('Invalid url:' + url)
     return response
 
-def getArticlesInLatestPage(board):
-    latestPageUrl = BASE_PTT_URL + '/bbs/' + board + '/index' + '.html'
-    response = getHtmlPage(latestPageUrl)
+def getArticles(url, count):
+    if count == 0:
+        return []
+    response = getHtmlPage(url)
     soup = BeautifulSoup(response.text, 'lxml')
+    previousPageUrl = BASE_PTT_URL + soup.find_all('a', 'btn wide')[1]['href']
     divs = soup.find_all("div", "r-ent")
     articles = []
     for div in divs:
         try:
-            href = div.find('a')['href']
-            articles.append(BASE_PTT_URL + href)
+            href = str(div.find('a')['href'])
+            nrec = str(div.find('div','nrec').string)
+            articles.append(ArticleInfo(BASE_PTT_URL + href, nrec))
         except:
             pass
-    return articles
+    return articles + getArticles(previousPageUrl, count-1)
 
-def main():
-    articles = getArticlesInLatestPage('Beauty')
+def isPopular(likes):
+    return likes == '爆' or (likes != 'None'and not likes.startswith('X') and int(likes) > 20)
+
+def getTitlesFromBoard(board, keyword):
+    latestPageUrl = BASE_PTT_URL + '/bbs/' + board + '/index' + '.html'
+    articles = getArticles(latestPageUrl, 5)
+    titles = []
     for article in articles:
-        response = getHtmlPage(article)
+        response = getHtmlPage(article.url)
         soup = BeautifulSoup(response.text, 'lxml')
         title = soup.title.string
-        if '正妹' not in title: 
+        if keyword not in title or not isPopular(article.likes):
             continue
-        dir_name = './ptt_photos/' + title
-        if not os.path.isdir(dir_name):
-            os.makedirs(dir_name)
-        else:
-            print('已经存在， 跳过')
-        for picture in soup.findAll('a', href = True):
-            if '.jpg' in str(picture.string):
-                download_image(picture.string, dir_name)
+        titles.append('Likes:' + article.likes + ' ' + title + '\n\t' + article.url)
+    # TODO -- Add images here
+    return titles
 
 
-if __name__ == '__main__':
-    main()
+def get_ptt_response(msg):
+    if msg['ToUserName'] == 'filehelper' and msg['Text'] == '正妹':
+        return getTitlesFromBoard('Beauty', '正妹')
+    else:
+        return []
 
+
+@itchat.msg_register(itchat.content.TEXT)
+def ptt_wechat_reply(msg):
+    replies = get_ptt_response(msg)
+    for reply in replies: 
+        itchat.send(reply, 'filehelper')
+        time.sleep(3)
+
+# itchat.auto_login(hotReload=True, enableCmdQR=True)
+itchat.auto_login(enableCmdQR=2)
+itchat.run()
 
