@@ -68,7 +68,6 @@ def ptt_wechat_reply(msg):
         itchat.send(reply, 'filehelper')
         time.sleep(3)
 
-# itchat.auto_login(hotReload=True, enableCmdQR=True)
-itchat.auto_login(enableCmdQR=2)
+itchat.auto_login(hotReload=True, enableCmdQR=2)
 itchat.run()
 
